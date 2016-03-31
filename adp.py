@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import argparse
 import cookielib
 import getpass
 import os
@@ -15,10 +16,10 @@ class PayCheckFetcher:
     time_between_requests = 1
     last_request_time = 0
 
-    def __init__(self, username, password):
+    def __init__(self, args):
         # why is this so verbose
         pm = urllib2.HTTPPasswordMgrWithDefaultRealm()
-        pm.add_password(None, 'http://agateway.adp.com', username, password)
+        pm.add_password(None, 'http://agateway.adp.com', args.username, args.passwd)
         # need cookies so auth works properly
         self.cj = cookielib.LWPCookieJar()
         o = urllib2.build_opener(urllib2.HTTPBasicAuthHandler(pm), urllib2.HTTPCookieProcessor(self.cj))
@@ -96,9 +97,9 @@ class PayCheckFetcher:
         return result
 
     # downloads a file
-    def downloadFile(self, url, filename):
-        path = os.path.abspath(filename)
-        print 'downloading '+url+' to '+filename
+    def downloadFile(self, args, url):
+        path = os.path.abspath(args.localpath)
+        print 'downloading '+url+' --> '+path
         fd = open(path, 'wb')
         response = self.getResponse(url = url)
         fd.write(response.read())
@@ -114,7 +115,8 @@ class PayCheckFetcher:
 
     # functions called from outside that does all the magic and saves
     # all the files
-    def request(self):
+    def request(self, args):
+        localpath = args.localpath
         soup = self.getSoupResponse()
         yeardata = sorted(self.getAllYears(soup).items(), reverse=True)
         for year, year_id in yeardata:
@@ -124,6 +126,7 @@ class PayCheckFetcher:
             year_soup = self.getSoupResponse(urllib.urlencode(inputs))
             paychecks = sorted(self.getPayCheckData(year_soup).items(),
                     reverse=True)
+            print paychecks
             print 'found '+str(len(paychecks))+' checks in '+year
             for datekey, date_id in paychecks:
                 filename = datekey+'.pdf'
@@ -143,20 +146,22 @@ class PayCheckFetcher:
             # 'browse' back to the original page
             soup = self.returnToBrowse(year_soup)
 
-def main(argv):
-    if (len(argv) != 1 and len(argv) != 2):
-        print "usage: python adp.py <username> [<password>]"
-        return -1
+def main():
+    parser = argparse.ArgumentParser(
+        description="Download ADP Pay Statements")
+    parser.add_argument("username", help="ADP Username")
+    parser.add_argument("--passwd", help="ADP Password",
+        default=getpass.getpass())
+    parser.add_argument("--localpath", help="Local Path for file download",
+        default=".")
 
-    username = argv[0]
-    if len(argv) == 2:
-        password = argv[1]
-    else:
-        password = getpass.getpass()
+    args = parser.parse_args()
+    if not os.path.isdir(args.localpath):
+        raise RuntimeError("%s is not a directory" % args.localpath)
 
-    fetcher = PayCheckFetcher(username, password)
-    fetcher.request()
+    fetcher = PayCheckFetcher(args)
+    fetcher.request(args)
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    main()

@@ -1,13 +1,13 @@
-#!/usr/bin/env python
+#!/usr/bin/python
 
 import argparse
-import http.cookiejar
+import cookielib
 import getpass
 import os
 import sys
 import time
-import urllib.request, urllib.parse, urllib.error
-import urllib.request, urllib.error, urllib.parse
+import urllib
+import urllib2
 from bs4 import BeautifulSoup
 
 class PayCheckFetcher:
@@ -18,12 +18,12 @@ class PayCheckFetcher:
 
     def __init__(self, args):
         # why is this so verbose
-        pm = urllib.request.HTTPPasswordMgrWithDefaultRealm()
+        pm = urllib2.HTTPPasswordMgrWithDefaultRealm()
         pm.add_password(None, 'http://agateway.adp.com', args.username, args.passwd)
         # need cookies so auth works properly
-        self.cj = http.cookiejar.LWPCookieJar()
-        o = urllib.request.build_opener(urllib.request.HTTPBasicAuthHandler(pm), urllib.request.HTTPCookieProcessor(self.cj))
-        urllib.request.install_opener(o)
+        self.cj = cookielib.LWPCookieJar()
+        o = urllib2.build_opener(urllib2.HTTPBasicAuthHandler(pm), urllib2.HTTPCookieProcessor(self.cj))
+        urllib2.install_opener(o)
 
         # make an intial request. we need to do this
         # as it updates our session cookie appropriately, so that
@@ -44,8 +44,8 @@ class PayCheckFetcher:
         # pretend to be chrome so the jsf renders as i expect
         ua = 'Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10_6_4; en-US) AppleWebKit/534.13 (KHTML, like Gecko) Chrome/9.0.597.19 Safari/534.13'
         headers = { 'User-Agent' : ua }
-        req = urllib.request.Request(url, data, headers)
-        response = urllib.request.urlopen(req)
+        req = urllib2.Request(url, data, headers)
+        response = urllib2.urlopen(req)
         return response
 
     # calls getResponse and throws it into soup. use prettify to view
@@ -65,7 +65,7 @@ class PayCheckFetcher:
                 values[input['name']] = input['value']
 
         # 2 is apparently w2s
-        values['statement:changeStatementsType'] = 1
+        values[u'statement:changeStatementsType'] = 1
 
         return values
 
@@ -99,7 +99,7 @@ class PayCheckFetcher:
     # downloads a file
     def downloadFile(self, args, url):
         path = os.path.abspath(args.localpath)
-        print('downloading '+url+' --> '+path)
+        print 'downloading '+url+' --> '+path
         fd = open(path, 'wb')
         response = self.getResponse(url = url)
         fd.write(response.read())
@@ -111,35 +111,35 @@ class PayCheckFetcher:
     def returnToBrowse(self, soup):
         inputs = self.getInputs(soup)
         inputs['statement:done'] = 'statement:done'
-        return self.getSoupResponse(urllib.parse.urlencode(inputs))
+        return self.getSoupResponse(urllib.urlencode(inputs))
 
     # functions called from outside that does all the magic and saves
     # all the files
     def request(self, args):
         localpath = args.localpath
         soup = self.getSoupResponse()
-        yeardata = sorted(list(self.getAllYears(soup).items()), reverse=True)
+        yeardata = sorted(self.getAllYears(soup).items(), reverse=True)
         for year, year_id in yeardata:
-            print('processing '+year)
+            print 'processing '+year
             inputs = self.getInputs(soup)
             inputs[year_id] = year_id
-            year_soup = self.getSoupResponse(urllib.parse.urlencode(inputs))
-            paychecks = sorted(list(self.getPayCheckData(year_soup).items()),
+            year_soup = self.getSoupResponse(urllib.urlencode(inputs))
+            paychecks = sorted(self.getPayCheckData(year_soup).items(),
                     reverse=True)
-            print(paychecks)
-            print('found '+str(len(paychecks))+' checks in '+year)
+            print paychecks
+            print 'found '+str(len(paychecks))+' checks in '+year
             for datekey, date_id in paychecks:
                 filename = datekey+'.pdf'
                 if os.path.exists(os.path.abspath(filename)):
                     # note that this will break if adp adds a new check for
                     # the day you run this on. TODO: i should change the
                     # filename to a key with the check number
-                    print('skipping (already downloaded): '+filename)
+                    print 'skipping (already downloaded): '+filename
                     continue
 
                 inputs = self.getInputs(year_soup)
                 inputs[date_id] = date_id
-                check_soup = self.getSoupResponse(urllib.parse.urlencode(inputs))
+                check_soup = self.getSoupResponse(urllib.urlencode(inputs))
                 check_url = 'https://ipay.adp.com'+check_soup.iframe['src']
                 self.downloadFile(check_url, filename)
 
